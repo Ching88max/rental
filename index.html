@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🌊 寻找避风港 - 云端实时同步版 🏖️</title>
+    <title>🌊 阳光避风港 - 隐私保护版 🏖️</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root { --ocean-dark: #0077b6; --ocean-medium: #00b4d8; --ocean-light: #90e0ef; --sea-foam: #caf0f8; --card-bg: rgba(255, 255, 255, 0.94); --text-color: #023e8a; --huawei-red: #e60012; }
         body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; background: linear-gradient(135deg, var(--sea-foam) 0%, var(--ocean-light) 100%); min-height: 100vh; margin: 0; padding: 20px; color: var(--text-color); }
-        .container { max-width: 1420px; margin: 0 auto; }
+        .container { max-width: 1420px; margin: 0 auto; display: none; } /* 默认隐藏所有内容 */
         header { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 20px 30px; border-radius: 20px; box-shadow: 0 8px 24px rgba(0, 119, 182, 0.15); margin-bottom: 25px; border-bottom: 4px solid var(--ocean-medium); }
         .header-title h1 { margin: 0; font-size: 24px; color: var(--ocean-dark); }
         .header-title p { margin: 5px 0 0 0; color: #0077b6; font-size: 13px; }
@@ -53,15 +53,34 @@
         .btn-delete { background: #ffe4e6; color: #be123c; }
         .modal { display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; }
         .modal img { max-width: 90%; max-height: 85%; border-radius: 12px; }
+
+        /* 🔒 密码遮罩层样式 */
+        #lock-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: linear-gradient(135deg, var(--ocean-dark), #003049); z-index: 99999; display: flex; align-items: center; justify-content: center; }
+        .lock-card { background: white; padding: 35px 30px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.3); text-align: center; max-width: 320px; width: 85%; }
+        .lock-card h2 { margin: 0 0 10px 0; color: var(--ocean-dark); font-size: 20px; }
+        .lock-card p { margin: 0 0 20px 0; color: #666; font-size: 13px; }
+        .lock-card input { width: 90%; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: 2px solid var(--ocean-light); text-align: center; font-size: 16px; letter-spacing: 2px; }
+        .lock-card button { width: 100%; padding: 12px; background: var(--ocean-dark); color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; }
+        
         @media print { .tab-menu, #add-section, #work-section, #map, .action-btn, .export-pdf-btn, .sort-btn { display: none !important; } }
     </style>
 </head>
 <body>
 
-<div class="container">
+<!-- 🔒 密码验证弹窗 -->
+<div id="lock-overlay">
+    <div class="lock-card">
+        <h2>🔒 访问受限</h2>
+        <p>请输入密码解锁个人租房仪表盘</p>
+        <input type="password" id="passInput" placeholder="输入访问密码" onkeydown="if(event.key==='Enter') verifyPassword()">
+        <button onclick="verifyPassword()">解锁进入</button>
+    </div>
+</div>
+
+<div class="container" id="main-content">
     <header>
         <div class="header-title">
-            <h1>🌊 阳光避风港 · 租屋对比仪表盘 ☁️ (云端实时同步版)</h1>
+            <h1>🌊 阳光避风港 · 租屋对比仪表盘 ☁️ (隐私保护版)</h1>
             <p>手机 / 电脑 实时多端同步查看与更新</p>
         </div>
         <button class="export-pdf-btn" onclick="exportToPDF()">📄 导出对比表 (PDF)</button>
@@ -149,6 +168,9 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+    // 🔑 访问密码设置已更改为指定密码
+    const SITE_PASSWORD = '0102967752';
+
     // ⚙️ SUPABASE CONFIGURATION
     const SUPABASE_URL = 'https://apdvuzsnmrbrpsjdlkzy.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZHZ1enNubXJicnBzamRsa3p5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NTAxNTUsImV4cCI6MjEwNDUyNjE1NX0.V5bvUkJ0tMjKW2vw2fPJVb1SpuFcvdwG0gYe9uRwcc8';
@@ -158,13 +180,32 @@
     let workLocation = null;
     let map = null;
     let markers = [];
-    let sortAscending = true; // 排序方向控制 (默认升序)
+    let sortAscending = true;
 
-    window.onload = async function() {
+    window.onload = function() {
+        if (localStorage.getItem('house_dashboard_unlocked_v2') === 'true') {
+            unlockPage();
+        }
+    };
+
+    function verifyPassword() {
+        const input = document.getElementById('passInput').value;
+        if (input === SITE_PASSWORD) {
+            localStorage.setItem('house_dashboard_unlocked_v2', 'true');
+            unlockPage();
+        } else {
+            alert('❌ 密码错误，无法访问！');
+            document.getElementById('passInput').value = '';
+        }
+    }
+
+    async function unlockPage() {
+        document.getElementById('lock-overlay').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
         initMap();
         toggleHousemateCountInput();
         await fetchCloudData();
-    };
+    }
 
     function initMap() {
         map = L.map('map').setView([1.3521, 103.8198], 11);
@@ -304,7 +345,6 @@
 
         if (res.error) {
             alert('❌ 保存失败：' + res.error.message);
-            console.error('Supabase Save Error:', res.error);
         } else {
             alert('✅ 房屋数据成功保存至 Supabase 云端！');
             resetForm();
@@ -417,7 +457,6 @@
             document.getElementById('clear-work-btn').style.display = 'none';
         }
 
-        // 根据看房时间进行动态排序（未填看房时间的排在最底下）
         let sortedHouses = [...houses].sort((a, b) => {
             if (!a.viewingTime) return 1;
             if (!b.viewingTime) return -1;
